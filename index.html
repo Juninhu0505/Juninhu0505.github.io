@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Livro Interativo</title>
+  <style>
+    :root{
+      --bg: #0b0f18;
+      --paper: #ffffff;
+      --shadow: 0 22px 60px rgba(0,0,0,.55);
+      --radius: 18px;
+      --w: min(92vw, 430px);
+      --h: min(86vh, 760px);
+    }
+
+    *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(1200px 700px at 50% 10%, rgba(90,140,255,.18), transparent 60%),
+                  radial-gradient(900px 600px at 20% 80%, rgba(255,130,160,.12), transparent 55%),
+                  var(--bg);
+      color:#eaf0ff;
+      overflow:hidden;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding: max(18px, env(safe-area-inset-top)) 14px max(18px, env(safe-area-inset-bottom));
+    }
+
+    /* Moldura geral */
+    .wrap{
+      width: var(--w);
+      max-width: 100%;
+      user-select:none;
+      touch-action: pan-y; /* permite scroll vertical do browser; swipe horizontal fica no JS */
+    }
+
+    /* Top bar */
+    .top{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin: 0 2px 12px;
+      opacity:.92;
+    }
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-weight:650;
+      letter-spacing:.2px;
+    }
+    .dot{
+      width:10px;height:10px;border-radius:99px;
+      background: linear-gradient(135deg, #6aa7ff, #ff7fb0);
+      box-shadow: 0 0 18px rgba(120,170,255,.6);
+    }
+    .hint{
+      font-size:12px;
+      opacity:.78;
+      display:flex;
+      align-items:center;
+      gap:8px;
+      white-space:nowrap;
+    }
+    .kbd{
+      font-size:11px;
+      padding:4px 8px;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 999px;
+      background: rgba(255,255,255,.06);
+      backdrop-filter: blur(8px);
+    }
+
+    /* Área 3D do livro */
+    .stage{
+      width: var(--w);
+      height: var(--h);
+      perspective: 1400px;
+      position: relative;
+      filter: drop-shadow(var(--shadow));
+    }
+
+    /* Base (capa / fundo) */
+    .base{
+      position:absolute; inset:0;
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+      border: 1px solid rgba(255,255,255,.12);
+      overflow:hidden;
+    }
+    .base::before{
+      content:"";
+      position:absolute; inset:-40%;
+      background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.14), transparent 40%),
+                  radial-gradient(circle at 70% 70%, rgba(255,255,255,.10), transparent 45%);
+      animation: glow 8s ease-in-out infinite alternate;
+      transform: rotate(8deg);
+    }
+    @keyframes glow{
+      0%{ opacity:.55; transform: rotate(8deg) scale(1); }
+      100%{ opacity:.85; transform: rotate(12deg) scale(1.06); }
+    }
+
+    /* Pilha de páginas */
+    .book{
+      position:absolute; inset:0;
+      border-radius: var(--radius);
+      transform-style: preserve-3d;
+    }
+
+    .page{
+      position:absolute; inset:0;
+      border-radius: var(--radius);
+      background: var(--paper);
+      overflow:hidden;
+      transform-style: preserve-3d;
+      transform-origin: left center;
+      will-change: transform;
+      box-shadow: 0 10px 40px rgba(0,0,0,.22);
+    }
+
+    /* “Arte” da página (sua imagem) */
+    .page .art{
+      position:absolute; inset:0;
+      background-size: cover;
+      background-position: center;
+      transform: translateZ(0.1px);
+      will-change: transform;
+    }
+
+    /* Brilho no papel */
+    .page::after{
+      content:"";
+      position:absolute; inset:0;
+      background:
+        linear-gradient(90deg, rgba(0,0,0,.18), rgba(0,0,0,0) 20%),
+        radial-gradient(900px 600px at 10% 50%, rgba(255,255,255,.16), transparent 55%);
+      opacity:.55;
+      pointer-events:none;
+      mix-blend-mode: multiply;
+    }
+
+    /* Sombra dinâmica durante a virada */
+    .shade{
+      position:absolute; inset:0;
+      background: linear-gradient(90deg, rgba(0,0,0,.35), transparent 55%);
+      opacity:0;
+      pointer-events:none;
+      border-radius: var(--radius);
+    }
+
+    /* Pequenas “partículas” (bem leve, bonito) */
+    .sparkles{
+      position:absolute; inset:0;
+      pointer-events:none;
+      opacity:.65;
+      mix-blend-mode: screen;
+    }
+    .spark{
+      position:absolute;
+      width: 6px; height: 6px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.9);
+      filter: blur(.2px);
+      animation: floatUp 6.5s linear infinite;
+      opacity:.0;
+    }
+    @keyframes floatUp{
+      0%{ transform: translateY(20px) scale(.7); opacity:0; }
+      10%{ opacity:.55; }
+      60%{ opacity:.25; }
+      100%{ transform: translateY(-120px) scale(1.2); opacity:0; }
+    }
+
+    /* Barra inferior */
+    .bottom{
+      margin-top:12px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      opacity:.92;
+    }
+    .progress{
+      display:flex; gap:6px; align-items:center;
+      flex:1;
+      justify-content:center;
+    }
+    .p{
+      width:7px; height:7px; border-radius:999px;
+      background: rgba(255,255,255,.22);
+      transition: transform .25s ease, background .25s ease;
+    }
+    .p.active{
+      background: rgba(255,255,255,.88);
+      transform: scale(1.35);
+    }
+
+    .btns{ display:flex; gap:8px; }
+    button{
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(255,255,255,.06);
+      color:#eaf0ff;
+      padding:10px 12px;
+      border-radius: 12px;
+      font-weight: 600;
+      cursor:pointer;
+      backdrop-filter: blur(10px);
+    }
+    button:active{ transform: translateY(1px); }
+
+    /* Desktop: teclas e hover um pouquinho melhor */
+    @media (hover:hover){
+      button:hover{ background: rgba(255,255,255,.10); }
+    }
+
+    /* Reduce motion */
+    @media (prefers-reduced-motion: reduce){
+      .base::before, .spark{ animation:none !important; }
+    }
+  </style>
+</head>
+<body>
+<div id="audioGate" style="
+  position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.72); backdrop-filter: blur(10px); z-index:9999; padding:24px;
+">
+  <div style="
+    width:min(92vw,420px);
+    border:1px solid rgba(255,255,255,.18);
+    background:rgba(255,255,255,.08);
+    border-radius:18px;
+    padding:18px;
+    color:#eaf0ff;
+    box-shadow:0 22px 60px rgba(0,0,0,.55);
+    text-align:center;
+  ">
+    <div style="font-weight:800; font-size:18px; margin-bottom:8px;">Começar o livro</div>
+    <div style="opacity:.85; font-size:13px; line-height:1.35; margin-bottom:14px;">
+      Toque no botão para liberar o áudio no celular. Depois disso, a música toca
+      e as falas entram automaticamente em cada página.
+    </div>
+    <button id="startAudio" style="
+      width:100%;
+      border:1px solid rgba(255,255,255,.18);
+      background:rgba(255,255,255,.12);
+      color:#eaf0ff;
+      padding:12px 14px;
+      border-radius:14px;
+      font-weight:800;
+      cursor:pointer;
+    ">▶ Tocar</button>
+  </div>
+</div>
+
+  <div class="wrap">
+    <div class="top">
+      <div class="brand"><span class="dot"></span> Livro Interativo</div>
+      <div class="hint">
+        <span class="kbd">Deslize →</span>
+        <span class="kbd">ou use ◀ ▶</span>
+      </div>
+    </div>
+
+    <div class="stage" id="stage">
+      <div class="base"></div>
+
+      <div class="book" id="book" aria-label="Livro com páginas">
+        <!-- Páginas (troque as imagens em assets/) -->
+        <div class="page" data-i="0">
+          <div class="art" style="background-image:url('assets/page1.jpg')"></div>
+          <div class="shade"></div>
+        </div>
+        <div class="page" data-i="1">
+          <div class="art" style="background-image:url('assets/page2.jpg')"></div>
+          <div class="shade"></div>
+        </div>
+        <div class="page" data-i="2">
+          <div class="art" style="background-image:url('assets/page3.jpg')"></div>
+          <div class="shade"></div>
+        </div>
+        <div class="page" data-i="3">
+          <div class="art" style="background-image:url('assets/page4.jpg')"></div>
+          <div class="shade"></div>
+        </div>
+        <div class="page" data-i="4">
+          <div class="art" style="background-image:url('assets/page5.jpg')"></div>
+          <div class="shade"></div>
+        </div>
+        <div class="page" data-i="5">
+          <div class="art" style="background-image:url('assets/page6.jpg')"></div>
+          <div class="shade"></div>
+        </div>
+
+        <!-- brilhozinhos -->
+        <div class="sparkles" id="sparkles"></div>
+      </div>
+    </div>
+
+    <div class="bottom">
+      <div class="btns">
+        <button id="prev" type="button">◀ Voltar</button>
+        <button id="next" type="button">Próxima ▶</button>
+      </div>
+
+      <div class="progress" id="progress" aria-label="Progresso"></div>
+
+      <div style="font-size:12px;opacity:.72;white-space:nowrap" id="counter">1 / 6</div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const book = document.getElementById('book');
+  const stage = document.getElementById('stage');
+  const pages = Array.from(book.querySelectorAll('.page'));
+  const sparkles = document.getElementById('sparkles');
+
+  const btnPrev = document.getElementById('prev');
+  const btnNext = document.getElementById('next');
+
+  const progress = document.getElementById('progress');
+  const counter = document.getElementById('counter');
+
+  let index = 0;               // página atual (0..n-1)
+  let dragging = false;
+  let startX = 0;
+  let lastX = 0;
+  let raf = null;
+  let flipDir = 1;             // 1 = avançar (vira pra esquerda), -1 = voltar
+  let flipT = 0;               // 0..1 progresso do flip
+
+  const N = pages.length;
+
+  // Cria bolinhas de progresso
+  for (let i = 0; i < N; i++){
+    const d = document.createElement('div');
+    d.className = 'p' + (i === 0 ? ' active' : '');
+    progress.appendChild(d);
+  }
+  const dots = Array.from(progress.children);
+
+  // Posiciona as páginas em pilha (z-index)
+  function layout(){
+    pages.forEach((p, i) => {
+      // as páginas acima devem ficar na frente
+      p.style.zIndex = String(N - i);
+
+      // páginas anteriores já “viradas”
+      if (i < index){
+        p.style.transform = 'rotateY(-180deg)';
+        p.querySelector('.shade').style.opacity = 0;
+      } else if (i === index){
+        p.style.transform = 'rotateY(0deg)';
+        p.querySelector('.shade').style.opacity = 0;
+      } else {
+        p.style.transform = 'rotateY(0deg)';
+        p.querySelector('.shade').style.opacity = 0;
+      }
+    });
+    updateUI();
+    playTrackForPage(index);
+  }
+
+  function updateUI(){
+    dots.forEach((d, i) => d.classList.toggle('active', i === index));
+    counter.textContent = `${index + 1} / ${N}`;
+    btnPrev.disabled = (index === 0);
+    btnNext.disabled = (index === N - 1);
+    btnPrev.style.opacity = btnPrev.disabled ? .5 : 1;
+    btnNext.style.opacity = btnNext.disabled ? .5 : 1;
+  }
+
+  // Efeito “parallax” bem leve na arte enquanto mexe
+  function setParallax(pageEl, t, dir){
+    const art = pageEl.querySelector('.art');
+    const px = (dir === 1 ? -1 : 1) * (t * 10);
+    art.style.transform = `translateX(${px}px) translateZ(0.1px)`;
+  }
+
+  function setShade(pageEl, t){
+    const shade = pageEl.querySelector('.shade');
+    shade.style.opacity = Math.min(0.55, Math.max(0, t * 0.55));
+  }
+
+  function animateTo(targetT, onDone){
+    const pageEl = pages[index];
+    const start = flipT;
+    const dur = 260; // ms
+    const t0 = performance.now();
+
+    cancelAnimationFrame(raf);
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / dur);
+      // easing suave
+      const e = 1 - Math.pow(1 - k, 3);
+
+      flipT = start + (targetT - start) * e;
+      applyFlip(pageEl, flipT, flipDir);
+
+      if (k < 1) raf = requestAnimationFrame(step);
+      else onDone && onDone();
+    };
+    raf = requestAnimationFrame(step);
+  }
+
+  function applyFlip(pageEl, t, dir){
+    // dir 1: vira pra esquerda (avança) => rotateY(-180)
+    // dir -1: volta => usa página anterior e "desvira" (0)
+    const deg = dir === 1 ? (-180 * t) : (-180 * (1 - t));
+    pageEl.style.transform = `rotateY(${deg}deg)`;
+    setShade(pageEl, Math.abs(deg) / 180);
+    setParallax(pageEl, Math.abs(deg) / 180, dir);
+  }
+
+  // Swipe: começa
+  function onDown(clientX){
+    if (dragging) return;
+    dragging = true;
+    startX = clientX;
+    lastX = clientX;
+    flipT = 0;
+
+    // Decide direção pelo “lado” do swipe:
+    // se arrastar para esquerda => avançar
+    // se arrastar para direita => voltar
+    // (a gente define isso no move, quando já existe delta)
+  }
+
+  // Swipe: move
+  function onMove(clientX){
+    if (!dragging) return;
+    lastX = clientX;
+    const dx = lastX - startX;
+
+    // Define direção após começar a mexer
+    if (Math.abs(dx) > 6){
+      flipDir = dx < 0 ? 1 : -1;
+    }
+
+    // Se tentar avançar na última ou voltar na primeira, trava
+    if (flipDir === 1 && index >= N - 1) return;
+    if (flipDir === -1 && index <= 0) return;
+
+    // Para voltar: mexe a página anterior
+    const pageEl = flipDir === 1 ? pages[index] : pages[index - 1];
+
+    // Normaliza t com base no tamanho do livro
+    const width = stage.getBoundingClientRect().width;
+    const dist = Math.min(width, Math.max(0, Math.abs(dx)));
+    flipT = Math.min(1, dist / (width * 0.92));
+
+    applyFlip(pageEl, flipT, flipDir);
+  }
+
+  // Swipe: solta
+  function onUp(){
+    if (!dragging) return;
+    dragging = false;
+
+    const dx = lastX - startX;
+    if (Math.abs(dx) < 10) return; // toque leve
+
+    // Se tentar avançar na última ou voltar na primeira
+    if (flipDir === 1 && index >= N - 1) return;
+    if (flipDir === -1 && index <= 0) return;
+
+    const pageEl = flipDir === 1 ? pages[index] : pages[index - 1];
+
+    const commit = flipT > 0.33;
+    animateTo(commit ? 1 : 0, () => {
+      // Finaliza estado
+      if (commit){
+        if (flipDir === 1) index++;
+        else index--;
+
+        // reseta transforms auxiliares
+        pages.forEach(p => p.querySelector('.art').style.transform = 'translateZ(0.1px)');
+        layout();
+      } else {
+        // voltou ao normal
+        pageEl.querySelector('.art').style.transform = 'translateZ(0.1px)';
+        setShade(pageEl, 0);
+      }
+      flipT = 0;
+    });
+  }
+
+  // Botões
+  function next(){
+    if (index >= N - 1) return;
+    flipDir = 1;
+    flipT = 0;
+    const pageEl = pages[index];
+    animateTo(1, () => {
+      index++;
+      pages.forEach(p => p.querySelector('.art').style.transform = 'translateZ(0.1px)');
+      layout();
+      flipT = 0;
+    });
+  }
+
+  function prev(){
+    if (index <= 0) return;
+    flipDir = -1;
+    flipT = 0;
+    const pageEl = pages[index - 1];
+    animateTo(1, () => {
+      index--;
+      pages.forEach(p => p.querySelector('.art').style.transform = 'translateZ(0.1px)');
+      layout();
+      flipT = 0;
+    });
+  }
+
+  btnNext.addEventListener('click', next);
+  btnPrev.addEventListener('click', prev);
+
+  // Teclado (desktop)
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight') next();
+    if (e.key === 'ArrowLeft') prev();
+  });
+
+  // Touch / Pointer
+  stage.addEventListener('pointerdown', (e) => {
+    stage.setPointerCapture(e.pointerId);
+    onDown(e.clientX);
+  });
+  stage.addEventListener('pointermove', (e) => onMove(e.clientX));
+  stage.addEventListener('pointerup', onUp);
+  stage.addEventListener('pointercancel', onUp);
+
+  // Sparkles (efeito leve)
+  function spawnSpark(){
+    const s = document.createElement('div');
+    s.className = 'spark';
+    const r = stage.getBoundingClientRect();
+    const x = Math.random() * r.width;
+    const y = r.height - (Math.random() * 20);
+
+    s.style.left = x + 'px';
+    s.style.top = y + 'px';
+    s.style.animationDuration = (5 + Math.random() * 3) + 's';
+    s.style.opacity = (0.08 + Math.random() * 0.22).toFixed(2);
+    s.style.transform = `translateY(20px) scale(${(0.6 + Math.random()*0.9).toFixed(2)})`;
+
+    sparkles.appendChild(s);
+    setTimeout(() => s.remove(), 9000);
+  }
+  setInterval(spawnSpark, 420);
+
+  // Preload imagens (pra não “piscar”)
+  pages.forEach(p => {
+    const bg = p.querySelector('.art').style.backgroundImage;
+    const url = bg.slice(5, -2);
+    const img = new Image();
+    img.src = url;
+  });
+
+  // ========= ÁUDIO: 1 música por página =========
+  const audioGate = document.getElementById('audioGate');
+  const startAudioBtn = document.getElementById('startAudio');
+
+  // Um áudio por página (na mesma ordem das páginas)
+  const pageTracks = [
+    'assets/s1.mp3', // página 1
+    'assets/s2.mp3', // página 2
+    'assets/s3.mp3', // página 3
+    'assets/s4.mp3', // página 4
+    'assets/s5.mp3', // página 5
+    'assets/s6.mp3'  // página 6
+  ];
+
+  let audioUnlocked = false;
+  let currentIndex = -1;
+
+  const track = new Audio();
+  track.loop = true;     // se quiser que repita enquanto a pessoa fica na página
+  track.volume = 0.85;   // ajuste aqui
+
+  function playTrackForPage(i){
+    if (!audioUnlocked) return;
+    if (i === currentIndex) return;
+
+    currentIndex = i;
+
+    // troca a música
+    try{
+      track.pause();
+      track.currentTime = 0;
+    }catch(e){}
+
+    const src = pageTracks[i];
+    if (!src) return;
+
+    track.src = src;
+    track.play().catch(()=>{});
+  }
+
+  startAudioBtn?.addEventListener('click', async () => {
+    audioUnlocked = true;
+    if (audioGate) audioGate.style.display = 'none';
+    playTrackForPage(index); // toca a música da página atual
+  });
+  // ========= FIM ÁUDIO =========
+
+  layout();
+})();
+</script>
+</body>
+</html>
